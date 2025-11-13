@@ -1,4 +1,4 @@
-package com.gs.resource.dto;
+package com.gs.dto.user;
 
 import java.time.OffsetDateTime;
 
