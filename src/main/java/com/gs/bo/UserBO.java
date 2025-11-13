@@ -1,7 +1,7 @@
 package com.gs.bo;
 
 import com.gs.dao.UserDAO;
-import com.gs.domain.model.User;
+import com.gs.model.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -2,9 +2,9 @@ package com.gs.resource;
 
 import com.gs.bo.UserBO;
 import com.gs.dao.UserDAO;
-import com.gs.domain.model.User;
-import com.gs.resource.dto.UserCreateDto;
-import com.gs.resource.dto.UserDetailsDto;
+import com.gs.model.User;
+import com.gs.dto.user.UserCreateDto;
+import com.gs.dto.user.UserDetailsDto;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;

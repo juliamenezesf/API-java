@@ -1,4 +1,4 @@
-package com.gs.infra;
+package com.gs.exception;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;

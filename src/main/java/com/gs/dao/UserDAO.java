@@ -1,12 +1,11 @@
 package com.gs.dao;
 
-import com.gs.domain.model.User;
+import com.gs.model.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import javax.sql.DataSource;
 import java.sql.*;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;

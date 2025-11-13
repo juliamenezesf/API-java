@@ -1,4 +1,4 @@
-package com.gs.infra;
+package com.gs.exception;
 
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;

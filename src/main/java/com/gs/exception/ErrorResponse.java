@@ -1,4 +1,4 @@
-package com.gs.infra;
+package com.gs.exception;
 
 import java.util.List;
 
