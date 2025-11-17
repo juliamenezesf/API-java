@@ -1,4 +1,4 @@
-\# 🌿 Wellbeing API – Global Solution FIAP 2025
+### 🌿 Wellbeing API – Global Solution FIAP 2025
 
 API desenvolvida em **Java + Quarkus** para o projeto **Global Solution**, integrando os módulos:
 
