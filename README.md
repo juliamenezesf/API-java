@@ -68,7 +68,7 @@ Copy code
 ## ⚙️ Perfis de Execução
 
 ### 🧪 Ambiente DEV (local – H2)
-```properties
+properties
 %dev.quarkus.datasource.db-kind=h2
 %dev.quarkus.datasource.jdbc.url=jdbc:h2:mem:wellbeing
 
