@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 
 import javax.sql.DataSource;
 import java.sql.*;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,29 +17,26 @@ public class MoodLogDAO {
     @Inject
     DataSource dataSource;
 
-    private static final String CREATE_TABLE = """
-        create table if not exists mood_logs(
-          id bigint auto_increment primary key,
-          user_id bigint not null,
-          score int not null,
-          note varchar(255),
-          stress_score int,
-          logged_at timestamp not null
-        )
-        """;
-
     private void ensureTable() {
-        try (Connection con = dataSource.getConnection();
-             Statement st = con.createStatement()) {
-            st.execute(CREATE_TABLE);
-        } catch (SQLException e) {
-            throw new RuntimeException("Erro ao criar tabela mood_logs", e);
+        // tabela já existe no Oracle
+    }
+
+    private Long nextId(Connection con) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("select nvl(max(id_mood), 0) + 1 from mood_logs");
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getLong(1);
         }
     }
 
+    // ===== NOVO: usado por MoodLogResource.list() =====
     public List<MoodLog> findAll() {
         ensureTable();
-        String sql = "select id,user_id,score,note,stress_score,logged_at from mood_logs order by id desc";
+        String sql = """
+            select id_mood, id_user, score, note, stress_score, logged_at
+              from mood_logs
+             order by logged_at desc
+            """;
 
         List<MoodLog> list = new ArrayList<>();
 
@@ -49,17 +47,50 @@ public class MoodLogDAO {
             while (rs.next()) {
                 list.add(map(rs));
             }
-
-            return list;
-
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao listar mood logs", e);
         }
+
+        return list;
     }
 
+    // ===== JÁ TINHA: buscar por usuário =====
+    public List<MoodLog> findByUser(Long userId) {
+        ensureTable();
+        String sql = """
+            select id_mood, id_user, score, note, stress_score, logged_at
+              from mood_logs
+             where id_user = ?
+             order by logged_at desc
+            """;
+
+        List<MoodLog> list = new ArrayList<>();
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setLong(1, userId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(map(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Erro ao listar mood logs por usuário", e);
+        }
+
+        return list;
+    }
+
+    // ===== NOVO: usado por MoodLogResource.getById() =====
     public MoodLog findById(Long id) {
         ensureTable();
-        String sql = "select id,user_id,score,note,stress_score,logged_at from mood_logs where id = ?";
+        String sql = """
+            select id_mood, id_user, score, note, stress_score, logged_at
+              from mood_logs
+             where id_mood = ?
+            """;
 
         try (Connection con = dataSource.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -71,52 +102,57 @@ public class MoodLogDAO {
                     return map(rs);
                 }
             }
-
-            return null;
-
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao buscar mood log", e);
         }
+
+        return null;
     }
 
     public Long insert(MoodLog m) {
         ensureTable();
-        String sql = "insert into mood_logs(user_id,score,note,stress_score,logged_at) values(?,?,?,?,?)";
+        String sql = """
+            insert into mood_logs
+              (id_mood, id_user, score, note, stress_score, logged_at)
+            values
+              (?,?,?,?,?,?)
+            """;
 
         try (Connection con = dataSource.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setLong(1, m.getUserId());
-            ps.setInt(2, m.getScore());
-            ps.setString(3, m.getNote());
-            ps.setInt(4, m.getStressScore() == null ? 0 : m.getStressScore());
-            ps.setTimestamp(5, Timestamp.from(m.getLoggedAt().toInstant()));
+            Long id = nextId(con);
+            ps.setLong(1, id);
+            ps.setLong(2, m.getUserId());
+            ps.setInt(3, m.getScore());
+            ps.setString(4, m.getNote());
+            ps.setInt(5, m.getStressScore());
 
-            ps.executeUpdate();
-
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    return keys.getLong(1);
-                }
+            OffsetDateTime loggedAt = m.getLoggedAt();
+            if (loggedAt != null) {
+                ps.setTimestamp(6, Timestamp.from(loggedAt.toInstant()));
+            } else {
+                ps.setNull(6, Types.TIMESTAMP);
             }
 
-            return null;
+            ps.executeUpdate();
+            return id;
 
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao inserir mood log", e);
         }
     }
 
+    // ===== NOVO: usado por MoodLogResource.delete() =====
     public void delete(Long id) {
         ensureTable();
-        String sql = "delete from mood_logs where id = ?";
+        String sql = "delete from mood_logs where id_mood = ?";
 
         try (Connection con = dataSource.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
             ps.setLong(1, id);
             ps.executeUpdate();
-
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao deletar mood log", e);
         }
@@ -124,14 +160,17 @@ public class MoodLogDAO {
 
     private MoodLog map(ResultSet rs) throws SQLException {
         MoodLog m = new MoodLog();
-        m.setId(rs.getLong("id"));
-        m.setUserId(rs.getLong("user_id"));
+        m.setId(rs.getLong("id_mood"));
+        m.setUserId(rs.getLong("id_user"));
         m.setScore(rs.getInt("score"));
         m.setNote(rs.getString("note"));
         m.setStressScore(rs.getInt("stress_score"));
+
         Timestamp ts = rs.getTimestamp("logged_at");
-        m.setLoggedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
+        if (ts != null) {
+            m.setLoggedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
+        }
+
         return m;
     }
-
 }

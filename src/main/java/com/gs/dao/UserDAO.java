@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 
 import javax.sql.DataSource;
 import java.sql.*;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,31 +17,23 @@ public class UserDAO {
     @Inject
     DataSource dataSource;
 
-    // SQL de criação da tabela (H2)
-    private static final String CREATE_TABLE_SQL = """
-        create table if not exists users(
-          id bigint auto_increment primary key,
-          name varchar(120) not null,
-          email varchar(120) not null unique,
-          role varchar(40) not null,
-          created_at timestamp not null
-        )
-        """;
-
-    // Garante que a tabela existe antes de usar
+    // Tabela já existe no Oracle (usada pelo Python) – não criamos nada aqui
     private void ensureTable() {
-        try (Connection con = dataSource.getConnection();
-             Statement st = con.createStatement()) {
+        // vazio de propósito
+    }
 
-            st.execute(CREATE_TABLE_SQL);
-        } catch (SQLException e) {
-            throw new RuntimeException("Erro ao garantir tabela users", e);
+    // Gera próximo ID usando MAX(ID_USER)+1 (sem mexer na estrutura do banco)
+    private Long nextId(Connection con) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("select nvl(max(id_user), 0) + 1 from users");
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getLong(1);
         }
     }
 
     public List<User> findAll() {
-        ensureTable(); // <<< garante tabela
-        String sql = "select id,name,email,role,created_at from users order by id desc";
+        ensureTable();
+        String sql = "select id_user, name, email, role, created_at from users order by id_user desc";
         List<User> list = new ArrayList<>();
 
         try (Connection con = dataSource.getConnection();
@@ -58,8 +51,8 @@ public class UserDAO {
     }
 
     public User findById(Long id) {
-        ensureTable(); // <<< garante tabela
-        String sql = "select id,name,email,role,created_at from users where id = ?";
+        ensureTable();
+        String sql = "select id_user, name, email, role, created_at from users where id_user = ?";
 
         try (Connection con = dataSource.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -79,37 +72,51 @@ public class UserDAO {
     }
 
     public Long insert(User u) {
-        ensureTable(); // <<< garante tabela
-        String sql = "insert into users(name, email, role, created_at) values(?,?,?,?)";
+        ensureTable();
+        String sql = "insert into users (id_user, name, email, role, created_at) values (?,?,?,?,?)";
 
         try (Connection con = dataSource.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setString(1, u.getName());
-            ps.setString(2, u.getEmail());
-            ps.setString(3, u.getRole());
-            ps.setTimestamp(4, Timestamp.from(u.getCreatedAt().toInstant()));
+            Long id = nextId(con);          // gera ID_USER
+            ps.setLong(1, id);
+            ps.setString(2, u.getName());
+            ps.setString(3, u.getEmail());
+
+            // ROLE precisa respeitar CK_USERS_ROLE: EMPLOYEE / MANAGER / ADMIN
+            String role = u.getRole();
+            if (role != null) {
+                role = role.trim().toUpperCase();
+            }
+            if (!"EMPLOYEE".equals(role) &&
+                    !"MANAGER".equals(role) &&
+                    !"ADMIN".equals(role)) {
+                throw new IllegalArgumentException("role inválido: " + role);
+            }
+            ps.setString(4, role);
+
+            OffsetDateTime createdAt = u.getCreatedAt();
+            if (createdAt != null) {
+                ps.setTimestamp(5, Timestamp.from(createdAt.toInstant()));
+            } else {
+                ps.setTimestamp(5, Timestamp.from(OffsetDateTime.now(ZoneOffset.UTC).toInstant()));
+            }
 
             ps.executeUpdate();
+            return id;
 
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    return keys.getLong(1);
-                }
-            }
         } catch (SQLException e) {
-            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("unique")) {
+            // ORA-00001 (unique) – provavelmente UK_USERS_EMAIL
+            if (e.getErrorCode() == 1) {
                 throw new IllegalArgumentException("email já cadastrado");
             }
             throw new RuntimeException("Erro ao inserir usuário", e);
         }
-
-        return null;
     }
 
     public void delete(Long id) {
-        ensureTable(); // <<< garante tabela
-        String sql = "delete from users where id = ?";
+        ensureTable();
+        String sql = "delete from users where id_user = ?";
         try (Connection con = dataSource.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
@@ -122,12 +129,16 @@ public class UserDAO {
 
     private User map(ResultSet rs) throws SQLException {
         User u = new User();
-        u.setId(rs.getLong("id"));
+        u.setId(rs.getLong("id_user"));
         u.setName(rs.getString("name"));
         u.setEmail(rs.getString("email"));
         u.setRole(rs.getString("role"));
+
         Timestamp ts = rs.getTimestamp("created_at");
-        u.setCreatedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
+        if (ts != null) {
+            u.setCreatedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
+        }
+
         return u;
     }
 }

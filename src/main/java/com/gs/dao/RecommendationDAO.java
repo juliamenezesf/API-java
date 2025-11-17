@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 
 import javax.sql.DataSource;
 import java.sql.*;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,30 +17,36 @@ public class RecommendationDAO {
     @Inject
     DataSource dataSource;
 
-    private static final String CREATE_TABLE = """
-        create table if not exists break_recommendations(
-          id bigint auto_increment primary key,
-          user_id bigint not null,
-          mood_id bigint not null,
-          kind varchar(30) not null,
-          minutes int not null,
-          created_at timestamp not null,
-          accepted char(1) default 'N'
-        )
-        """;
-
+    // Não mexemos em tabela – ela já existe no Oracle
     private void ensureTable() {
-        try (Connection con = dataSource.getConnection();
-             Statement st = con.createStatement()) {
-            st.execute(CREATE_TABLE);
-        } catch (SQLException e) {
-            throw new RuntimeException("Erro ao garantir tabela break_recommendations", e);
+        // vazio de propósito
+    }
+
+    // Gera próximo ID via MAX(id_rec)+1, sem mexer em sequence/estrutura do banco
+    private Long nextId(Connection con) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "select nvl(max(id_rec), 0) + 1 from break_recommendations");
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getLong(1);
         }
     }
 
+    // ===== NOVO: usado pelo RecommendationResource.list() =====
     public List<Recommendation> findAll() {
         ensureTable();
-        String sql = "select id,user_id,mood_id,kind,minutes,created_at,accepted from break_recommendations order by id desc";
+        String sql = """
+            select id_rec,
+                   id_user,
+                   id_mood,
+                   kind,
+                   minutes,
+                   created_at,
+                   accepted
+              from break_recommendations
+             order by created_at desc
+            """;
+
         List<Recommendation> list = new ArrayList<>();
 
         try (Connection con = dataSource.getConnection();
@@ -49,90 +56,101 @@ public class RecommendationDAO {
             while (rs.next()) {
                 list.add(map(rs));
             }
-            return list;
-
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao listar recomendações", e);
         }
+
+        return list;
     }
 
-    public Recommendation findById(Long id) {
+    // ===== JÁ EXISTENTE: buscar por usuário =====
+    public List<Recommendation> findByUser(Long userId) {
         ensureTable();
-        String sql = "select id,user_id,mood_id,kind,minutes,created_at,accepted from break_recommendations where id = ?";
+        String sql = """
+            select id_rec,
+                   id_user,
+                   id_mood,
+                   kind,
+                   minutes,
+                   created_at,
+                   accepted
+              from break_recommendations
+             where id_user = ?
+             order by created_at desc
+            """;
+
+        List<Recommendation> list = new ArrayList<>();
 
         try (Connection con = dataSource.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setLong(1, id);
+            ps.setLong(1, userId);
 
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return map(rs);
+                while (rs.next()) {
+                    list.add(map(rs));
                 }
             }
-            return null;
-
         } catch (SQLException e) {
-            throw new RuntimeException("Erro ao buscar recomendação", e);
+            throw new RuntimeException("Erro ao listar recomendações", e);
         }
+
+        return list;
     }
 
     public Long insert(Recommendation r) {
         ensureTable();
         String sql = """
-            insert into break_recommendations(user_id,mood_id,kind,minutes,created_at,accepted)
-            values(?,?,?,?,?,?)
+            insert into break_recommendations
+              (id_rec, id_user, id_mood, kind, minutes, created_at, accepted)
+            values
+              (?,?,?,?,?,?,?)
             """;
 
         try (Connection con = dataSource.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = con.prepareStatement(sql)) {
 
-            ps.setLong(1, r.getUserId());
-            ps.setLong(2, r.getMoodId());
-            ps.setString(3, r.getKind());
-            ps.setInt(4, r.getMinutes());
-            ps.setTimestamp(5, Timestamp.from(r.getCreatedAt().toInstant()));
-            ps.setString(6, Boolean.TRUE.equals(r.getAccepted()) ? "Y" : "N");
+            Long id = nextId(con);
+            ps.setLong(1, id);
+            ps.setLong(2, r.getUserId());
+            ps.setLong(3, r.getMoodId());
+            ps.setString(4, r.getKind());
+            ps.setInt(5, r.getMinutes());
 
-            ps.executeUpdate();
-
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) return keys.getLong(1);
+            OffsetDateTime createdAt = r.getCreatedAt();
+            if (createdAt != null) {
+                ps.setTimestamp(6, Timestamp.from(createdAt.toInstant()));
+            } else {
+                ps.setNull(6, Types.TIMESTAMP);
             }
 
-            return null;
+            Boolean accepted = r.getAccepted(); // assume getter getAccepted()
+            ps.setString(7, Boolean.TRUE.equals(accepted) ? "Y" : "N");
+
+            ps.executeUpdate();
+            return id;
 
         } catch (SQLException e) {
             throw new RuntimeException("Erro ao inserir recomendação", e);
         }
     }
 
-    public void delete(Long id) {
-        ensureTable();
-        String sql = "delete from break_recommendations where id = ?";
-
-        try (Connection con = dataSource.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-
-            ps.setLong(1, id);
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Erro ao deletar recomendação", e);
-        }
-    }
-
     private Recommendation map(ResultSet rs) throws SQLException {
         Recommendation r = new Recommendation();
-        r.setId(rs.getLong("id"));
-        r.setUserId(rs.getLong("user_id"));
-        r.setMoodId(rs.getLong("mood_id"));
+        r.setId(rs.getLong("id_rec"));
+        r.setUserId(rs.getLong("id_user"));
+        r.setMoodId(rs.getLong("id_mood"));
         r.setKind(rs.getString("kind"));
         r.setMinutes(rs.getInt("minutes"));
+
         Timestamp ts = rs.getTimestamp("created_at");
-        r.setCreatedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
-        String accepted = rs.getString("accepted");
-        r.setAccepted("Y".equalsIgnoreCase(accepted));
+        if (ts != null) {
+            r.setCreatedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
+        }
+
+        String acc = rs.getString("accepted");
+        r.setAccepted("Y".equalsIgnoreCase(acc));
+
         return r;
     }
 }
