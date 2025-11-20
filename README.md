@@ -1,6 +1,6 @@
 # 🌿 Worklife API -- Global Solution FIAP 2025
 
-### Repositório: **API-java**
+### Repositório: **Worklife-API**
 
 API desenvolvida em **Java + Quarkus** para o projeto **Global
 Solution**, contemplando os módulos:
@@ -122,8 +122,8 @@ Características principais:
 1.  Clonar o repositório:
 
 ``` bash
-git clone https://github.com/SEU_USUARIO/API-java.git
-cd API-java
+git clone https://github.com/SEU_USUARIO/Worklife-API.git
+cd Worklife-API
 ```
 
 2.  Rodar a aplicação:
