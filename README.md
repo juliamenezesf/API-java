@@ -1,4 +1,4 @@
-# 🌿 Wellbeing API -- Global Solution FIAP 2025
+# 🌿 Worklife API -- Global Solution FIAP 2025
 
 ### Repositório: **API-java**
 
@@ -178,7 +178,6 @@ java -jar target/wellbeing-api-1.0.0-SNAPSHOT.jar
   -------- -------------------------
  - GET      /v1/tasks
  - GET      /v1/tasks/{id}
- - GET      /v1/tasks/user/{userId}
  - POST     /v1/tasks
  - DELETE   /v1/tasks/{id}
 
@@ -190,7 +189,6 @@ java -jar target/wellbeing-api-1.0.0-SNAPSHOT.jar
   -------- ----------------------------
   - GET      /v1/mood-logs
   - GET      /v1/mood-logs/{id}
-  - GET      /v1/mood-logs/user/{userId}
   - POST     /v1/mood-logs
   - DELETE   /v1/mood-logs/{id}
 
@@ -201,7 +199,6 @@ java -jar target/wellbeing-api-1.0.0-SNAPSHOT.jar
   Método   Endpoint
   -------- -----------------------------------
   - GET      /v1/recommendations
-  - GET      /v1/recommendations/user/{userId}
   - POST     /v1/recommendations
 
 ------------------------------------------------------------------------
