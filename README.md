@@ -27,6 +27,12 @@ A API está publicada na Render:
 
 👉 **https://api-java-1-w4eg.onrender.com**
 
+## 🚀 Deploy no Vercel
+
+A plataforma está publicada no Vercel:
+
+👉 **https://worklife-balance-kappa.vercel.app**
+
 ------------------------------------------------------------------------
 
 ## 🛠️ Tecnologias Utilizadas
